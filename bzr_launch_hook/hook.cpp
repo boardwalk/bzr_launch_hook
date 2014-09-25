@@ -36,14 +36,15 @@ static PIMAGE_IMPORT_DESCRIPTOR getNamedImportDescriptor(HMODULE hModule, const 
     return pImportDesc;
 }
 
-void hookFunctions(cHookDescriptor* pHook, DWORD nCount)
+size_t hookFunctions(cHookDescriptor* pHooks, size_t count)
 {
    HMODULE hModule = GetModuleHandle(NULL);
+   size_t successCount = 0;
 
-   for(cHookDescriptor* i = pHook; i != pHook + nCount; ++i)
+   for(cHookDescriptor* pHook = pHooks; pHook != pHooks + count; ++pHook)
    {
       // Get the specific import descriptor.
-      PIMAGE_IMPORT_DESCRIPTOR pImportDesc = getNamedImportDescriptor(hModule, i->m_szModule);
+      PIMAGE_IMPORT_DESCRIPTOR pImportDesc = getNamedImportDescriptor(hModule, pHook->m_szModule);
 
       if(pImportDesc == NULL)
          continue;
@@ -62,7 +63,7 @@ void hookFunctions(cHookDescriptor* pHook, DWORD nCount)
       // Loop through and look for the one that matches the name.
       for(; pOrigThunk->u1.Function != NULL; ++pOrigThunk, ++pRealThunk)
       {
-         if(i->m_addr == eByName)
+         if(pHook->m_addr == eByName)
          {
             if(pOrigThunk->u1.Ordinal & IMAGE_ORDINAL_FLAG)
                // Import must be by name
@@ -75,7 +76,7 @@ void hookFunctions(cHookDescriptor* pHook, DWORD nCount)
             if(pByName->Name[0] == '\0')
                continue;
 
-            if(strcmp(pByName->Name, i->m_szFunction) != 0)
+            if(strcmp(pByName->Name, pHook->m_szFunction) != 0)
                // Name does not match
                continue;
          }
@@ -85,7 +86,7 @@ void hookFunctions(cHookDescriptor* pHook, DWORD nCount)
                // The import must be by ordinal
                continue;
 
-            if((pOrigThunk->u1.Ordinal & ~IMAGE_ORDINAL_FLAG) != i->m_dwOrdinal)
+            if((pOrigThunk->u1.Ordinal & ~IMAGE_ORDINAL_FLAG) != pHook->m_dwOrdinal)
                // Ordinal does not match
                continue;
          }
@@ -99,18 +100,21 @@ void hookFunctions(cHookDescriptor* pHook, DWORD nCount)
          VirtualProtect(mbi_thunk.BaseAddress, mbi_thunk.RegionSize, PAGE_READWRITE, &mbi_thunk.Protect);
 
          // Save the original address if requested.
-         i->m_pOldFunction = pRealThunk->u1.Function;
-         pRealThunk->u1.Function = i->m_pNewFunction;
+         pHook->m_pOldFunction = pRealThunk->u1.Function;
+         pRealThunk->u1.Function = pHook->m_pNewFunction;
 
          // TEMPORARY
          TCHAR dumb[256];
-         _stprintf(dumb, _T("m_pOldFunction=%08x m_pNewFunction=%08x\n"), i->m_pOldFunction, i->m_pNewFunction);
+         _stprintf(dumb, _T("m_pOldFunction=%08x m_pNewFunction=%08x\n"), pHook->m_pOldFunction, pHook->m_pNewFunction);
          MessageBox(NULL, dumb, _T("BLOOOP"), MB_OK);
 
          DWORD dwOldProtect;
          VirtualProtect(mbi_thunk.BaseAddress, mbi_thunk.RegionSize, mbi_thunk.Protect, &dwOldProtect);
 
+         successCount++;
          break;
       }
    }
+
+   return successCount;
 }

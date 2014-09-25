@@ -20,6 +20,6 @@ struct cHookDescriptor
    DWORD m_pOldFunction;
 };
 
-void hookFunctions(cHookDescriptor* pHook, DWORD nCount);
+size_t hookFunctions(cHookDescriptor* pHooks, size_t count);
 
 #endif

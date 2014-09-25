@@ -164,7 +164,13 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
 
         LogError(_T("Hooking!"));
 
-        hookFunctions(g_hooks, sizeof(g_hooks)/sizeof(g_hooks[0]));
+        const size_t hookCount = sizeof(g_hooks)/sizeof(g_hooks[0]);
+
+        if(hookFunctions(g_hooks, hookCount) != hookCount)
+        {
+            LogError(_T("Failed to hook all functions"));
+            // We could have hooked something, so we can't unload at this point
+        }
     }
 
     return TRUE;
