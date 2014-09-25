@@ -1,0 +1,7 @@
+/bzr_launch_daemon/Debug
+/bzr_launch_daemon/Release
+/bzr_launch_hook/Debug
+/bzr_launch_hook/Release
+/Debug
+/Release
+*.filters

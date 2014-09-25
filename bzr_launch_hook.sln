@@ -1,0 +1,29 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2012
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "bzr_launch_daemon", "bzr_launch_daemon\bzr_launch_daemon.vcxproj", "{E7D7A455-72CB-4787-A153-933DB0275C92}"
+	ProjectSection(ProjectDependencies) = postProject
+		{0F37F0C6-FDE3-40B3-8FB1-86F4E600EF18} = {0F37F0C6-FDE3-40B3-8FB1-86F4E600EF18}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "bzr_launch_hook", "bzr_launch_hook\bzr_launch_hook.vcxproj", "{0F37F0C6-FDE3-40B3-8FB1-86F4E600EF18}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E7D7A455-72CB-4787-A153-933DB0275C92}.Debug|Win32.ActiveCfg = Debug|Win32
+		{E7D7A455-72CB-4787-A153-933DB0275C92}.Debug|Win32.Build.0 = Debug|Win32
+		{E7D7A455-72CB-4787-A153-933DB0275C92}.Release|Win32.ActiveCfg = Release|Win32
+		{E7D7A455-72CB-4787-A153-933DB0275C92}.Release|Win32.Build.0 = Release|Win32
+		{0F37F0C6-FDE3-40B3-8FB1-86F4E600EF18}.Debug|Win32.ActiveCfg = Debug|Win32
+		{0F37F0C6-FDE3-40B3-8FB1-86F4E600EF18}.Debug|Win32.Build.0 = Debug|Win32
+		{0F37F0C6-FDE3-40B3-8FB1-86F4E600EF18}.Release|Win32.ActiveCfg = Release|Win32
+		{0F37F0C6-FDE3-40B3-8FB1-86F4E600EF18}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
