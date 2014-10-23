@@ -1,188 +1,179 @@
-#include "hook.h"
-#include <shellapi.h>
-#include <tchar.h>
+#include <jansson.h>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <ws2tcpip.h>
+#include <shlobj.h>
+#include <shlwapi.h>
 #include <memory>
 #include <regex>
 
 using namespace std;
 
-static void LogError(const TCHAR* str)
+struct LoginDetails
 {
-    MessageBox(NULL, str, _T("bzr_launch_hook"), MB_OK);
-}
+    uint32_t serverIp;
+    uint16_t serverPort;
+    string accountName;
+    string accountTicket;
+};
 
-static BOOL WINAPI ShellExecuteExA_Hook(SHELLEXECUTEINFOA *pExecInfo)
-{ LogError(_T("ShellExecuteExA_Hook")); return FALSE; }
-
-static BOOL WINAPI ShellExecuteExW_Hook(SHELLEXECUTEINFOW *pExecInfo)
-{ LogError(_T("ShellExecuteExW_Hook")); return FALSE; }
-
-static HINSTANCE WINAPI ShellExecuteA_Hook(HWND hwnd, LPCSTR lpOperation, LPCSTR lpFile, LPCSTR lpParameters, LPCSTR lpDirectory, INT nShowCmd)
-{ LogError(_T("ShellExecuteA_Hook")); return NULL; }
-
-static HINSTANCE WINAPI ShellExecuteW_Hook(HWND hwnd, LPCWSTR lpOperation, LPCWSTR lpFile, LPCWSTR lpParameters, LPCWSTR lpDirectory, INT nShowCmd)
-{ LogError(_T("ShellExecuteW_Hook")); return NULL; }
-
-static BOOL WINAPI CreateProcessA_Hook(LPCSTR lpApplicationName, LPSTR lpCommandLine, LPSECURITY_ATTRIBUTES lpProcessAttributes,
-                                       LPSECURITY_ATTRIBUTES lpThreadAttributes, BOOL bInheritHandles, DWORD dwCreationFlags, LPVOID lpEnvironment, LPCSTR lpCurrentDirectory,
-                                       LPSTARTUPINFOA lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation)
-{ LogError(_T("CreateProcessA_Hook")); return FALSE; }
-
-static BOOL WINAPI CreateProcessW_Hook(LPCWSTR lpApplicationName, LPWSTR lpCommandLine, LPSECURITY_ATTRIBUTES lpProcessAttributes,
-                                       LPSECURITY_ATTRIBUTES lpThreadAttributes, BOOL bInheritHandles, DWORD dwCreationFlags, LPVOID lpEnvironment, LPCWSTR lpCurrentDirectory,
-                                       LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation)
-{ LogError(_T("CreateProcessW_Hook")); return FALSE; }
-
-static BOOL foo()
+static void gather_login_details(LoginDetails& details)
 {
     // Grab server ip, port and account name from command line
     // "C:\Turbine\Asheron's Call\acclient.exe" -a MD9NQ8M3NJXJLPDCWY4ANQDNQ -h 74.201.102.237:9000 -rodat off -glsticket
-    const TCHAR* commandLine = GetCommandLine();
+    const char* commandLine = GetCommandLineA();
 
-    basic_regex<TCHAR> serverAddrRegex(_T("-h ([\\d\\.]+):(\\d+)"));
-    basic_regex<TCHAR> accountNameRegex(_T("-a ([0-9A-Z]+)"));
+    regex serverAddrRegex("-h ([\\d\\.]+):(\\d+)");
+    regex accountNameRegex("-a ([0-9A-Z]+)");
 
-    match_results<const TCHAR*> match;
+    match_results<const char*> match;
     regex_search(commandLine, match, serverAddrRegex);
 
     if(match.empty())
     {
-        LogError(_T("Failed to match against server address"));
-        return FALSE;
+        throw runtime_error("Failed to match against server address");
     }
 
-    basic_string<TCHAR> serverIp = match[1].str();
-    basic_string<TCHAR> serverPort = match[2].str();
+    string serverIp = match[1].str();
+    string serverPort = match[2].str();
 
     regex_search(commandLine, match, accountNameRegex);
 
     if(match.empty())
     {
-        LogError(_T("Failed to match against account name"));
-        return FALSE;
+        throw runtime_error("Failed to match against account name");
     }
 
-    basic_string<TCHAR> accountName = match[1].str();
-
-    LogError(_T("ZOOP!\n"));
+    string accountName = match[1].str();
 
     // Grab ticket from registry
     HKEY registryKey;
-    if(RegOpenKey(HKEY_CURRENT_USER, _T("Software\\Turbine\\AC1"), &registryKey) != ERROR_SUCCESS)
+    if(RegOpenKeyA(HKEY_CURRENT_USER, "Software\\Turbine\\AC1", &registryKey) != ERROR_SUCCESS)
     {
-        LogError(_T("Failed to open registry key"));
-        return FALSE;
+        throw runtime_error("Failed to open registry key");
     }
 
     DWORD ticketSize = 0;
 
-    if(RegGetValue(registryKey, NULL, _T("GLSTicket"), RRF_RT_REG_BINARY, NULL, NULL, &ticketSize) != ERROR_SUCCESS)
+    if(RegGetValueA(registryKey, NULL, "GLSTicket", RRF_RT_REG_BINARY, NULL, NULL, &ticketSize) != ERROR_SUCCESS)
     {
-        LogError(_T("Failed to get ticket size"));
-        return FALSE;
+        RegCloseKey(registryKey);
+        throw runtime_error("Failed to get ticket size");
     }
 
     unique_ptr<uint8_t[]> ticket(new uint8_t[ticketSize]);
 
-    if(RegGetValue(registryKey, NULL, _T("GLSTicket"), RRF_RT_REG_BINARY, NULL, ticket.get(), &ticketSize) != ERROR_SUCCESS)
+    if(RegGetValueA(registryKey, NULL, "GLSTicket", RRF_RT_REG_BINARY, NULL, ticket.get(), &ticketSize) != ERROR_SUCCESS)
     {
-        LogError(_T("Failed to get ticket"));
-        return FALSE;
+        RegCloseKey(registryKey);
+        throw runtime_error("Failed to get ticket");
     }
 
-    if(RegDeleteValue(registryKey, _T("GLSTicket")) != ERROR_SUCCESS)
+    if(RegDeleteValueA(registryKey, "GLSTicket") != ERROR_SUCCESS)
     {
-        LogError(_T("Failed to delete ticket"));
-        return FALSE;
+        RegCloseKey(registryKey);
+        throw runtime_error("Failed to delete ticket");
     }
 
     RegCloseKey(registryKey);
-    return TRUE;
-}
 
-static cHookDescriptor g_hooks[] =
-{
-    { eByName, "shell32.dll", "ShellExecuteA", 0, (DWORD)ShellExecuteA_Hook, 0 },
-    //{ eByOrdinal, "shell32.dll", NULL, 433, (DWORD)ShellExecuteA_Hook, 0 },
+    IN_ADDR convertedServerIp;
 
-    //{ eByName, "shell32.dll", "ShellExecuteW", 0, (DWORD)ShellExecuteW_Hook, 0 },
-    //{ eByOrdinal, "shell32.dll", NULL, 437, (DWORD)ShellExecuteW_Hook, 0 },
-
-    //{ eByName, "shell32.dll", "ShellExecuteExA", 0, (DWORD)ShellExecuteExA_Hook, 0 },
-    //{ eByOrdinal, "shell32.dll", NULL, 435, (DWORD)ShellExecuteExA_Hook, 0 },
-
-    //{ eByName, "shell32.dll", "ShellExecuteExW", 0, (DWORD)ShellExecuteExW_Hook, 0 },
-    //{ eByOrdinal, "shell32.dll", NULL, 436, (DWORD)ShellExecuteExW_Hook, 0 },
-
-    //{ eByName, "kernel32.dll", "CreateProcessA", 0, (DWORD)CreateProcessA_Hook, 0 },
-    //{ eByOrdinal, "kernel32.dll", NULL, 167, (DWORD)CreateProcessA_Hook, 0 },
-
-    //{ eByName, "kernel32.dll", "CreateProcessW", 0, (DWORD)CreateProcessW_Hook, 0 },
-    //{ eByOrdinal, "kernel32.dll", NULL, 171, (DWORD)CreateProcessW_Hook, 0 },
-};
-
-static bool tcsendswithi(const TCHAR* s, const TCHAR* p)
-{
-    size_t slen = _tcslen(s);
-    size_t plen = _tcslen(p);
-
-    if(slen < plen)
+    if(InetPtonA(AF_INET, serverIp.c_str(), &convertedServerIp) != 1)
     {
-        return false;
+        throw runtime_error("Failed to convert server ip to binary");
     }
 
-    for(size_t pi = 0; pi < plen; pi++)
-    {
-        size_t si = slen - plen + pi;
+    char* end = nullptr;
 
-        if(_totlower(s[si]) != p[pi])
+    long convertedServerPort = strtol(serverPort.c_str(), &end, 10);
+
+    if(end == nullptr)
+    {
+        throw runtime_error("Failed to convert server port to binary");
+    }
+
+    if(convertedServerPort < 0)
+    {
+        throw runtime_error("Negative port number");
+    }
+
+    for(size_t i = 0; i < ticketSize - 1; i++)
+    {
+        if(!isgraph(ticket[i]))
         {
-            return false;
+            throw runtime_error("Non-graph character in ticket");
         }
     }
 
-    return true;
-}
-
-extern "C"
-BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
-{
-    if(fdwReason == DLL_PROCESS_ATTACH)
+    if(ticket[ticketSize - 1] != '\0')
     {
-        TCHAR path[MAX_PATH];
-        GetModuleFileName(NULL, path, sizeof(path)/sizeof(TCHAR));
-
-        if(tcsendswithi(path, _T("\\bzr_launch_daemon.exe")))
-        {
-            return TRUE;
-        }
-
-        if(!tcsendswithi(path, _T("\\aclauncher.exe")))
-        {
-            return FALSE;
-        }
-
-        LogError(_T("Hooking!"));
-
-        const size_t hookCount = sizeof(g_hooks)/sizeof(g_hooks[0]);
-
-        if(hookFunctions(g_hooks, hookCount) != hookCount)
-        {
-            LogError(_T("Failed to hook all functions"));
-            // We could have hooked something, so we can't unload at this point
-        }
+        throw runtime_error("No trailing null in ticket");
     }
 
-    return TRUE;
+    details.serverIp = convertedServerIp.S_un.S_addr;
+    details.serverPort = static_cast<uint16_t>(convertedServerPort);
+    details.accountName = accountName;
+    details.accountTicket = reinterpret_cast<char*>(ticket.get());
 }
 
-extern "C" __declspec(dllexport)
-void CALLBACK WinEventProc(
-    HWINEVENTHOOK hWinEventHook,
-    DWORD event,
-    HWND hwnd,
-    LONG idObject,
-    LONG idChild,
-    DWORD dwEventThread,
-    DWORD dwmsEventTime)
-{}
+static string build_login_json_path()
+{
+    PWSTR roamingAppData;
+
+    if(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &roamingAppData) != S_OK)
+    {
+        throw runtime_error("Failed to get roaming app data folder");
+    }
+
+    wchar_t loginJsonPath[MAX_PATH];
+    
+    PathCombineW(loginJsonPath, roamingAppData, L"boardwalk");
+    PathCombineW(loginJsonPath, loginJsonPath, L"Bael'Zharon's Revenge");
+    PathCombineW(loginJsonPath, loginJsonPath, L"login.json");
+
+    CoTaskMemFree(roamingAppData);
+
+    char loginJsonPathMBS[MAX_PATH];
+    wcstombs_s(nullptr, loginJsonPathMBS, loginJsonPath, _TRUNCATE);
+
+    return loginJsonPathMBS;
+}
+
+static void dump_login_details(const LoginDetails& details)
+{
+    FILE* fp = fopen(build_login_json_path().c_str(), "w");
+
+    if(fp == nullptr)
+    {
+        throw runtime_error("Failed to open login.json");
+    }
+
+    json_t* obj = json_object();
+    json_object_set_new(obj, "serverIp", json_integer(details.serverIp));
+    json_object_set_new(obj, "serverPort", json_integer(details.serverPort));
+    json_object_set_new(obj, "accountName", json_string(details.accountName.c_str()));
+    json_object_set_new(obj, "accountTicket", json_string(details.accountTicket.c_str()));
+    json_dumpf(obj, fp, JSON_INDENT(2));
+    json_decref(obj);
+
+    fclose(fp);
+}
+
+int main(int argc, char* argv[])
+{
+    try
+    {
+        LoginDetails details;
+        gather_login_details(details);
+        dump_login_details(details);
+    }
+    catch(const runtime_error& e)
+    {
+        fprintf(stderr, "%s\n", e.what());
+        getchar();
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
+}
