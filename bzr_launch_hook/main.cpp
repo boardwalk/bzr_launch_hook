@@ -117,7 +117,7 @@ static void gather_login_details(LoginDetails& details)
     details.accountTicket = reinterpret_cast<char*>(ticket.get());
 }
 
-static string build_login_json_path()
+static string build_config_json_path()
 {
     PWSTR roamingAppData;
 
@@ -130,7 +130,7 @@ static string build_login_json_path()
     
     PathCombineW(loginJsonPath, roamingAppData, L"boardwalk");
     PathCombineW(loginJsonPath, loginJsonPath, L"Bael'Zharon's Revenge");
-    PathCombineW(loginJsonPath, loginJsonPath, L"login.json");
+    PathCombineW(loginJsonPath, loginJsonPath, L"config.json");
 
     CoTaskMemFree(roamingAppData);
 
@@ -142,22 +142,49 @@ static string build_login_json_path()
 
 static void dump_login_details(const LoginDetails& details)
 {
-    FILE* fp = fopen(build_login_json_path().c_str(), "w");
+	string path = build_config_json_path();
+
+    FILE* fp = fopen(path.c_str(), "r");
 
     if(fp == nullptr)
     {
-        throw runtime_error("Failed to open login.json");
+        throw runtime_error("Failed to open config.json for reading");
     }
 
-    json_t* obj = json_object();
+    json_error_t err;
+    json_t* root = json_loadf(fp, 0, &err);
+
+    fclose(fp);
+
+    if(root == nullptr)
+    {
+        throw runtime_error("Failed to parse config.json");
+    }
+
+    json_t* obj = json_object_get(root, "SessionManager");
+
+    if(obj == nullptr)
+    {
+        obj = json_object();
+        json_object_set_new(root, "SessionManager", obj);
+    }
+
     json_object_set_new(obj, "serverIp", json_integer(details.serverIp));
     json_object_set_new(obj, "serverPort", json_integer(details.serverPort));
     json_object_set_new(obj, "accountName", json_string(details.accountName.c_str()));
     json_object_set_new(obj, "accountTicket", json_string(details.accountTicket.c_str()));
-    json_dumpf(obj, fp, JSON_INDENT(2));
-    json_decref(obj);
 
+    fp = fopen(path.c_str(), "w");
+
+    if(fp == nullptr)
+    {
+        json_decref(root);
+        throw runtime_error("Failed to open config.json for writing");
+    }
+
+    json_dumpf(root, fp, JSON_INDENT(2));
     fclose(fp);
+    json_decref(root);
 }
 
 int main(int argc, char* argv[])
