@@ -98,6 +98,11 @@ static void gather_login_details(LoginDetails& details)
         throw runtime_error("Negative port number");
     }
 
+    for(char& c : accountName)
+    {
+        c = tolower(c);
+    }
+
     for(size_t i = 0; i < ticketSize - 1; i++)
     {
         if(!isgraph(ticket[i]))
@@ -111,7 +116,7 @@ static void gather_login_details(LoginDetails& details)
         throw runtime_error("No trailing null in ticket");
     }
 
-    details.serverIp = convertedServerIp.S_un.S_addr;
+    details.serverIp = htonl(convertedServerIp.S_un.S_addr);
     details.serverPort = static_cast<uint16_t>(convertedServerPort);
     details.accountName = accountName;
     details.accountTicket = reinterpret_cast<char*>(ticket.get());
